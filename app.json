@@ -1,0 +1,25 @@
+{
+  "name": "Bors CI",
+  "description": "more to come here",
+  "repository": "https://github.com/alexcrichton/bors2",
+  "keywords": ["rust", "ci"],
+  "env": {
+    "SECRET_TOKEN": {
+      "description": "Cookie secret token",
+      "generator": "secret"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql",
+      "options": {
+        "version": "9.5"
+      }
+    }
+  ],
+  "buildpacks": [
+    {
+      "url": "https://github.com/alexcrichotn/heroku-buildpack-rust"
+    }
+  ]
+}

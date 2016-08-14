@@ -1,0 +1,16 @@
+[package]
+name = "bors2"
+version = "0.1.0"
+authors = ["Alex Crichton <alex@alexcrichton.com>"]
+
+[dependencies]
+futures = { git = "https://github.com/alexcrichton/futures-rs" }
+futures-curl = { git = "https://github.com/alexcrichton/futures-rs" }
+futures-io = { git = "https://github.com/alexcrichton/futures-rs" }
+futures-minihttp = { git = "https://github.com/alexcrichton/futures-rs" }
+futures-cpupool = { git = "https://github.com/alexcrichton/futures-rs" }
+futures-mio = { git = "https://github.com/alexcrichton/futures-rs" }
+postgres = "0.11"
+r2d2 = "0.7"
+r2d2_postgres = "0.10"
+rustc-serialize = "0.3"
