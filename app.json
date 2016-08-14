@@ -19,7 +19,7 @@
   ],
   "buildpacks": [
     {
-      "url": "https://github.com/alexcrichotn/heroku-buildpack-rust"
+      "url": "https://github.com/alexcrichton/heroku-buildpack-rust"
     }
   ]
 }
