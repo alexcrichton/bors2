@@ -15,9 +15,7 @@ use std::net::SocketAddr;
 use futures_minihttp::{Server, Request, Response};
 
 fn main() {
-    let port = env::var("PORT").unwrap_or("8080".to_string());
-    let default_addr = format!("127.0.0.1:{}", port);
-    let addr = env::args().nth(1).unwrap_or(default_addr);
+    let addr = env::args().nth(1).unwrap_or("127.0.0.1:3000".to_string());
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     println!("Listening on {}", addr);
