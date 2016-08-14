@@ -17,6 +17,11 @@
       }
     }
   ],
+  "formation": {
+    "web": {
+      "quantity": 1
+    }
+  },
   "buildpacks": [
     {
       "url": "https://github.com/alexcrichton/heroku-buildpack-rust"
