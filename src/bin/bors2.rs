@@ -1,27 +1,29 @@
-extern crate futures;
-extern crate futures_cpupool;
-extern crate futures_curl;
-extern crate futures_io;
-extern crate futures_minihttp;
-extern crate futures_mio;
-extern crate postgres;
-extern crate r2d2;
-extern crate r2d2_postgres;
+extern crate env_logger;
+extern crate hyper;
+
+#[macro_use]
+extern crate log;
 
 use std::env;
-use std::io;
 use std::net::SocketAddr;
 
-use futures_minihttp::{Server, Request, Response};
+use hyper::server::{Server, Request, Response};
 
 fn main() {
+    env_logger::init().unwrap();
+
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:3000".to_string());
     let addr = addr.parse::<SocketAddr>().unwrap();
+    Server::http(addr).unwrap().handle(serve).unwrap();
+}
 
-    println!("Listening on {}", addr);
-    Server::new(&addr).workers(1).serve(|_: Request| {
-        let mut resp = Response::new();
-        resp.body("hello");
-        futures::finished::<_, io::Error>(resp)
-    }).unwrap();
+fn serve(req: Request, res: Response) {
+    debug!("got a request!");
+    debug!("remote addr: {}", req.remote_addr);
+    debug!("methods: {}", req.method);
+    debug!("headers: {}", req.headers);
+    debug!("uri: {}", req.uri);
+    debug!("version: {}", req.version);
+
+    drop(res);
 }

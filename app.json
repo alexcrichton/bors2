@@ -20,11 +20,14 @@
   "formation": {
     "web": {
       "quantity": 1
+    },
+    "worker": {
+      "quantity": 1
     }
   },
   "buildpacks": [
     {
-      "url": "https://github.com/alexcrichton/heroku-buildpack-rust"
+      "url": "https://github.com/emk/heroku-buildpack-rust"
     }
   ]
 }
