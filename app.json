@@ -7,7 +7,9 @@
     "SECRET_TOKEN": {
       "description": "Cookie secret token",
       "generator": "secret"
-    }
+    },
+    "HEROKU": "1",
+    "RUST_LOG": "debug"
   },
   "addons": [
     {
