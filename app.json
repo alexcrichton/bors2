@@ -30,7 +30,10 @@
   },
   "buildpacks": [
     {
-      "url": "https://github.com/emk/heroku-buildpack-rust"
+      "url": "https://github.com/alexcrichton/heroku-buildpack-rust-1"
+    },
+    {
+      "url": "https://github.com/alexcrichton/heroku-buildpack-diesel"
     }
   ]
 }
