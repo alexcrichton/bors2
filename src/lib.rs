@@ -1,11 +1,17 @@
 #![feature(proc_macro)]
-#![feature(custom_derive)]
 
+#[macro_use]
+extern crate log;
 #[macro_use]
 extern crate diesel_codegen;
 #[macro_use]
 extern crate diesel;
+#[macro_use]
+extern crate error_chain;
 extern crate dotenv;
+extern crate rustc_serialize;
+extern crate curl;
+extern crate oauth2;
 
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
@@ -23,3 +29,7 @@ pub fn establish_connection() -> PgConnection {
 
 pub mod schema;
 pub mod models;
+pub mod http;
+pub mod github;
+pub mod errors;
+pub mod travis;

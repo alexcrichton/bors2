@@ -8,6 +8,12 @@
       "description": "Cookie secret token",
       "generator": "secret"
     },
+    "GH_CLIENT_ID": {
+      "description": "GitHub client identifier (created in GitHub settings)"
+    },
+    "GH_CLIENT_SECRET": {
+      "description": "GitHub client secret (created in GitHub settings)"
+    },
     "HEROKU": "1",
     "RUST_LOG": "debug"
   },
