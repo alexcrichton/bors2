@@ -6,7 +6,7 @@ use rustc_serialize::{json, Decodable, Encodable};
 
 use errors::*;
 
-pub fn github_get<T>(url: &str, auth: &Token) -> Result<T>
+pub fn github_get<T>(url: &str, auth: &Token) -> BorsResult<T>
     where T: Decodable,
 {
     let headers = vec![
@@ -17,7 +17,7 @@ pub fn github_get<T>(url: &str, auth: &Token) -> Result<T>
     get(&format!("https://api.github.com{}", url), &headers)
 }
 
-pub fn github_post<T, U>(url: &str, auth: &Token, u: &U) -> Result<T>
+pub fn github_post<T, U>(url: &str, auth: &Token, u: &U) -> BorsResult<T>
     where T: Decodable,
           U: Encodable,
 {
@@ -29,7 +29,7 @@ pub fn github_post<T, U>(url: &str, auth: &Token, u: &U) -> Result<T>
     post(&format!("https://api.github.com{}", url), &headers, u)
 }
 
-pub fn github_delete(url: &str, auth: &Token) -> Result<()> {
+pub fn github_delete(url: &str, auth: &Token) -> BorsResult<()> {
     let headers = vec![
         format!("Authorization: token {}", auth.access_token),
         format!("Accept: application/vnd.github.v3+json"),
@@ -38,7 +38,7 @@ pub fn github_delete(url: &str, auth: &Token) -> Result<()> {
     delete(&format!("https://api.github.com{}", url), &headers)
 }
 
-pub fn get<T>(url: &str, headers: &[String]) -> Result<T>
+pub fn get<T>(url: &str, headers: &[String]) -> BorsResult<T>
     where T: Decodable,
 {
     let mut handle = Easy::new();
@@ -54,7 +54,7 @@ pub fn get<T>(url: &str, headers: &[String]) -> Result<T>
     perform(&mut handle, url)
 }
 
-pub fn post<T, U>(url: &str, headers: &[String], u: &U) -> Result<T>
+pub fn post<T, U>(url: &str, headers: &[String], u: &U) -> BorsResult<T>
     where U: Encodable,
           T: Decodable,
 {
@@ -72,7 +72,7 @@ pub fn post<T, U>(url: &str, headers: &[String], u: &U) -> Result<T>
     perform(&mut handle, url)
 }
 
-pub fn delete(url: &str, headers: &[String]) -> Result<()> {
+pub fn delete(url: &str, headers: &[String]) -> BorsResult<()> {
     let mut handle = Easy::new();
     let mut list = List::new();
     try!(list.append("User-Agent: hello!"));
@@ -86,7 +86,7 @@ pub fn delete(url: &str, headers: &[String]) -> Result<()> {
     perform(&mut handle, url)
 }
 
-fn perform<T: Decodable>(handle: &mut Easy, url: &str) -> Result<T> {
+fn perform<T: Decodable>(handle: &mut Easy, url: &str) -> BorsResult<T> {
     let mut headers = Vec::new();
     let mut data = Vec::new();
 
