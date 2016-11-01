@@ -235,7 +235,6 @@ fn add_github_webhook_to_bors2(app: &App,
             "pull_request_review".to_string(),
             "pull_request_review_comment".to_string(),
             "status".to_string(),
-            "label".to_string(),
         ],
         config: github::CreateWebhookConfig {
             content_type: "json".to_string(),
