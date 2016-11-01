@@ -295,8 +295,9 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
         None => return Err("no project found".into()),
     };
 
-    let secret = project.github_webhook_secret.as_bytes();
-    let my_signature = try!(hmac::hmac(Type::SHA1, &secret, &body));
+    let my_signature = try!(hmac::hmac(Type::SHA1,
+                                       project.github_webhook_secret.as_bytes(),
+                                       &body));
     let my_signature = format!("sha1={}", my_signature.to_hex());
     if !openssl::crypto::memcmp::eq(signature.as_bytes(), my_signature.as_bytes()) {
         return Err("invalid signature".into())

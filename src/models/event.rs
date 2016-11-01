@@ -6,7 +6,7 @@ use errors::*;
 
 pub struct Event {
     pub id: i32,
-    pub provider_id: String,
+    pub provider_id: Provider,
     pub provider_event_id: String,
     pub provider_event: String,
     pub event: String,
@@ -40,7 +40,10 @@ impl Event {
     pub fn from_row(row: &Row) -> Event {
         Event {
             id: row.get("id"),
-            provider_id: row.get("provider_id"),
+            provider_id: match row.get("provider_id") {
+                0 => Provider::GitHub,
+                n => panic!("invalid id: {}", n),
+            },
             provider_event_id: row.get("provider_event_id"),
             provider_event: row.get("provider_event"),
             event: row.get("event"),
