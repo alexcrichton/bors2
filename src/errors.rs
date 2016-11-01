@@ -1,8 +1,10 @@
 use std::io;
 use std::str;
 
+use openssl;
 use curl;
 use rustc_serialize::json;
+use rustc_serialize::hex;
 use pg;
 
 error_chain! {
@@ -16,5 +18,7 @@ error_chain! {
         str::Utf8Error, NotUtf8;
         pg::error::Error, PostgresError;
         io::Error, Io;
+        openssl::error::ErrorStack, Crypto;
+        hex::FromHexError, Hex;
     }
 }

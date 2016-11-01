@@ -6,27 +6,32 @@ extern crate conduit;
 extern crate conduit_conditional_get;
 extern crate conduit_cookie;
 extern crate conduit_log_requests;
-extern crate rand;
 extern crate conduit_middleware;
 extern crate conduit_router;
 extern crate curl;
 extern crate lazycell;
 extern crate oauth2;
+extern crate openssl;
 extern crate postgres as pg;
 extern crate r2d2;
 extern crate r2d2_postgres;
+extern crate rand;
 extern crate rustc_serialize;
 extern crate url;
 
-use std::io::{self, Cursor};
-use std::sync::Arc;
-use std::error::Error;
 use std::collections::HashMap;
+use std::error::Error;
+use std::io::{self, Cursor};
+use std::str;
+use std::sync::Arc;
 
 use conduit::{Request, Response};
 use conduit_middleware::MiddlewareBuilder;
-use conduit_router::RouteBuilder;
+use conduit_router::{RouteBuilder, RequestParams};
 use rand::{Rng, thread_rng};
+use openssl::crypto::hmac;
+use openssl::crypto::hash::Type;
+use rustc_serialize::hex::FromHex;
 
 use app::{App, RequestApp};
 use db::RequestTransaction;
@@ -72,6 +77,7 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
 
     router.post("/add-repo", C(add_repo));
     router.get("/authorize/github", C(authorize_github));
+    router.post("/webhook/github/*repo", C(github_webhook));
     router.get("/", C(index));
 
     let env = app.config.env;
@@ -226,7 +232,7 @@ fn add_github_webhook_to_bors2(app: &App,
         ],
         config: github::CreateWebhookConfig {
             content_type: "json".to_string(),
-            url: format!("{}/github-webhook", app.config.host),
+            url: format!("{}/webhook/github/{}/{}", app.config.host, user, repo),
             secret: secret.to_string(),
         },
     };
@@ -268,4 +274,37 @@ fn redirect(url: &str) -> Response {
         headers: headers,
         body: Box::new(io::empty()),
     }
+}
+
+fn github_webhook(req: &mut Request) -> BorsResult<Response> {
+    let event = req.headers().find("X-GitHub-Event")
+                   .expect("event not present")[0].to_string();
+    let signature = req.headers().find("X-Hub-Signature")
+                       .expect("signature not present")[0].to_string();
+    let id = req.headers().find("X-GitHub-Delivery")
+                .expect("delivery not present")[0].to_string();
+    let repo = req.params()["repo"].to_string();
+    let mut parts = repo.splitn(2, '/');
+    let user = parts.next().unwrap();
+    let repo = parts.next().unwrap();
+
+    let mut body = Vec::new();
+    try!(req.body().read_to_end(&mut body));
+
+    let tx = try!(req.tx());
+    let project = match try!(Project::find_by_name(tx, user, repo)) {
+        Some(project) => project,
+        None => return Err("no project found".into()),
+    };
+
+    let signature = try!(signature.from_hex());
+    let secret = try!(project.github_webhook_secret.from_hex());
+    let my_signature = try!(hmac::hmac(Type::SHA1, &secret, &body));
+    if !openssl::crypto::memcmp::eq(&signature, &my_signature) {
+        return Err("invalid signature".into())
+    }
+
+    try!(Event::insert(tx, Provider::GitHub, &id, &event,
+                       try!(str::from_utf8(&body))));
+    Ok(html(""))
 }

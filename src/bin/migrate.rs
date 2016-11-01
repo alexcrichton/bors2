@@ -60,6 +60,16 @@ fn migrations() -> Vec<Migration> {
             travis_access_token     VARCHAR,
             appveyor_token          VARCHAR
         "),
+        Migration::add_table(20161030140654, "events", "
+            id                      SERIAL PRIMARY KEY,
+            provider_id             INTEGER NOT NULL,
+            provider_event_id       VARCHAR NOT NULL,
+            provider_event          VARCHAR NOT NULL,
+            event                   VARCHAR NOT NULL,
+            created_at              TIMESTAMP NOT NULL default now(),
+            state                   INTEGER NOT NULL,
+            processed_at            TIMESTAMP NOT NULL default now()
+        "),
         // Migration::add_table(20161030140653, "pull_requests", "
         //     id          SERIAL PRIMARY KEY,
         //     number      INTEGER NOT NULL,
