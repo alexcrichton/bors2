@@ -40,8 +40,8 @@ impl App {
         // we're updating code
         github.scopes.push("public_repo".to_string());
         // going to create an authorization
-        github.scopes.push("user".to_string());
-        github.scopes.push("admin:org".to_string());
+        // github.scopes.push("user".to_string());
+        // github.scopes.push("admin:org".to_string());
 
         let db_config = r2d2::Config::builder()
             .pool_size(if config.env == ::Env::Production {10} else {1})
