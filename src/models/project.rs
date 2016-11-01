@@ -34,7 +34,7 @@ impl Project {
     pub fn from_row(row: &Row) -> Project {
         Project {
             id: row.get("id"),
-            repo_user: row.get("name"),
+            repo_user: row.get("repo_user"),
             repo_name: row.get("repo_name"),
             github_access_token: row.get("github_access_token"),
             github_webhook_secret: row.get("github_webhook_secret"),
