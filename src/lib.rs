@@ -2,28 +2,33 @@
 extern crate log;
 #[macro_use]
 extern crate error_chain;
-extern crate rustc_serialize;
-extern crate curl;
-extern crate oauth2;
-extern crate r2d2;
-extern crate postgres as pg;
-extern crate r2d2_postgres;
-extern crate conduit_middleware;
-extern crate lazycell;
-extern crate conduit_router;
+extern crate conduit;
 extern crate conduit_conditional_get;
 extern crate conduit_cookie;
 extern crate conduit_log_requests;
-extern crate conduit;
+extern crate rand;
+extern crate conduit_middleware;
+extern crate conduit_router;
+extern crate curl;
+extern crate lazycell;
+extern crate oauth2;
+extern crate postgres as pg;
+extern crate r2d2;
+extern crate r2d2_postgres;
+extern crate rustc_serialize;
+extern crate url;
 
+use std::io::{self, Cursor};
 use std::sync::Arc;
 use std::error::Error;
+use std::collections::HashMap;
 
-use conduit_middleware::MiddlewareBuilder;
 use conduit::{Request, Response};
+use conduit_middleware::MiddlewareBuilder;
 use conduit_router::RouteBuilder;
+use rand::{Rng, thread_rng};
 
-use app::App;
+use app::{App, RequestApp};
 use errors::*;
 
 #[derive(Clone)]
@@ -43,12 +48,12 @@ pub enum Env {
     Production,
 }
 
-// pub mod models;
 pub mod app;
 pub mod db;
-pub mod http;
-pub mod github;
 pub mod errors;
+pub mod github;
+pub mod http;
+pub mod models;
 pub mod travis;
 pub mod util;
 
@@ -63,8 +68,8 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     let mut router = RouteBuilder::new();
 
     router.post("/add-repo", add_repo);
-    // router.get("/authorize/github", authorize_github);
-    // router.get("/", index);
+    router.get("/authorize/github", authorize_github);
+    router.get("/", index);
 
     let env = app.config.env;
     let mut m = MiddlewareBuilder::new(router);
@@ -116,71 +121,74 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     }
 }
 
-fn add_repo(_req: &mut Request) -> BorsResult<Response> {
-    loop {}
-    // let repo = url.query_pairs()
-    //               .find(|&(ref a, _)| a == "repo")
-    //               .map(|(_, value)| value)
-    //               .expect("repo not present in url");
-    // let oauth = self.oauth();
-    // let redirect_url = oauth.authorize_url(repo.to_string());
-    // debug!("oauth redirect to {}", redirect_url);
-    // res.headers_mut().set(Location(redirect_url.to_string()));
-    // *res.status_mut() = StatusCode::Found;
-    // Ok(Vec::new())
+fn add_repo(req: &mut Request) -> BorsResult<Response> {
+    let mut query = Vec::new();
+    try!(req.body().read_to_end(&mut query));
+
+    let mut query = url::form_urlencoded::parse(&query);
+    let repo = query.find(|&(ref a, _)| a == "repo")
+                    .map(|(_, value)| value)
+                    .expect("failed to find `repo` in query string");
+    let app = req.app();
+    let redirect_url = app.github.authorize_url(repo.into_owned());
+    debug!("oauth redirect to {}", redirect_url);
+    Ok(redirect(&redirect_url.to_string()))
 }
 
-//     fn authorize_github(&self, req: Request, res: &mut Response, url: &Url)
-//                         -> Result<Vec<u8>> {
-//         let code = url.query_pairs()
-//                       .find(|&(ref a, _)| a == "code")
-//                       .map(|(_, value)| value)
-//                       .expect("code not present in url");
-//         let state = url.query_pairs()
-//                        .find(|&(ref a, _)| a == "state")
-//                        .map(|(_, value)| value)
-//                        .expect("state not present in url");
-//         match self.add_project(&code, &state) {
-//             Ok(()) => {}
-//             Err(e) => return Ok(self.fail(e)),
-//         }
-//         self.index(req, res)
-//     }
-//
-//     fn add_project(&self, code: &str, repo_name: &str) -> Result<()> {
-//         let github_access_token = try!(self.oauth().exchange(code.to_string()));
-//
-//         // let travis_token = try!(self.negotiate_travis_token(&github_access_token));
-//         // println!("travis token: {}", travis_token);
-//
-//         let mut parts = repo_name.splitn(2, '/');
-//         let user = parts.next().unwrap();
-//         let name = parts.next().unwrap();
-//         let github_webhook_secret = thread_rng().gen_ascii_chars().take(20)
-//                                                 .collect::<String>();
-//
-//         try!(self.add_github_webhook_to_bors2(&github_access_token,
-//                                               user,
-//                                               name,
-//                                               &github_webhook_secret));
-//
-//         // let new_project = NewProject {
-//         //     repo_user: user,
-//         //     repo_name: name,
-//         //     github_access_token: &github_access_token.access_token,
-//         //     github_webhook_secret: &github_webhook_secret,
-//         // };
-//         // let conn = bors2::establish_connection();
-//         // let project: Project = try!(diesel::insert(&new_project)
-//         //                                    .into(projects::table)
-//         //                                    .get_result(conn));
-//         // drop(project);
-//
-//         Ok(())
-//     }
+fn authorize_github(req: &mut Request) -> BorsResult<Response> {
+    {
+        let query = req.query_string().unwrap_or("");
+        let query = url::form_urlencoded::parse(query.as_bytes()).collect::<Vec<_>>();
+        let code = query.iter()
+                        .find(|&&(ref a, _)| a == "code")
+                        .map(|&(_, ref value)| &value[..])
+                        .expect("code not present in url");
+        let state = query.iter()
+                         .find(|&&(ref a, _)| a == "state")
+                         .map(|&(_, ref value)| &value[..])
+                         .expect("state not present in url");
+        try!(add_project(req.app(), &code, &state).chain_err(|| {
+            "failed to add project"
+        }));
+    }
+    index(req)
+}
+
+fn add_project(app: &App, code: &str, repo_name: &str) -> BorsResult<()> {
+    let github_access_token = try!(app.github.exchange(code.to_string()));
+
+    // let travis_token = try!(self.negotiate_travis_token(&github_access_token));
+    // println!("travis token: {}", travis_token);
+
+    let mut parts = repo_name.splitn(2, '/');
+    let user = parts.next().unwrap();
+    let name = parts.next().unwrap();
+    let github_webhook_secret = thread_rng().gen_ascii_chars().take(20)
+                                            .collect::<String>();
+
+    try!(add_github_webhook_to_bors2(app,
+                                     &github_access_token,
+                                     user,
+                                     name,
+                                     &github_webhook_secret));
+
+    // let new_project = NewProject {
+    //     repo_user: user,
+    //     repo_name: name,
+    //     github_access_token: &github_access_token.access_token,
+    //     github_webhook_secret: &github_webhook_secret,
+    // };
+    // let conn = bors2::establish_connection();
+    // let project: Project = try!(diesel::insert(&new_project)
+    //                                    .into(projects::table)
+    //                                    .get_result(conn));
+    // drop(project);
+
+    Ok(())
+}
 //
 //     // fn negotiate_travis_token(&self, github_access_token: &oauth2::Token)
-//     //                           -> Result<String> {
+//     //                           -> BorsResult<String> {
 //     //     // let auth: Authorization = try!(github_post("/authorizations",
 //     //     //                                            &github_access_token,
 //     //     //                                            &CreateAuthorization {
@@ -210,40 +218,39 @@ fn add_repo(_req: &mut Request) -> BorsResult<Response> {
 //     //
 //     //     Ok(travis_auth.access_token)
 //     // }
-//
-//     fn add_github_webhook_to_bors2(&self,
-//                                    token: &oauth2::Token,
-//                                    user: &str,
-//                                    repo: &str,
-//                                    secret: &str) -> Result<()> {
-//         let url = format!("/repos/{}/{}/hooks", user, repo);
-//         let w: Webhook = try!(github_post(&url, &token, &CreateWebhook {
-//             name: "web".to_string(),
-//             active: true,
-//             events: vec![
-//             ],
-//             config: CreateWebhookConfig {
-//                 content_type: "json".to_string(),
-//                 url: format!("{}/github-webhook", self.host),
-//                 secret: secret.to_string(),
-//             },
-//         }));
-//         drop(w);
-//         Ok(())
-//     }
+
+fn add_github_webhook_to_bors2(app: &App,
+                               token: &oauth2::Token,
+                               user: &str,
+                               repo: &str,
+                               secret: &str) -> BorsResult<()> {
+    let url = format!("/repos/{}/{}/hooks", user, repo);
+    let webhook = github::CreateWebhook {
+        name: "web".to_string(),
+        active: true,
+        events: vec![
+        ],
+        config: github::CreateWebhookConfig {
+            content_type: "json".to_string(),
+            url: format!("{}/github-webhook", app.config.host),
+            secret: secret.to_string(),
+        },
+    };
+    let w: github::Webhook = try!(http::github_post(&url, &token, &webhook));
+    drop(w);
+    Ok(())
+}
 
 fn index(_req: &mut Request) -> BorsResult<Response> {
-//     let body = format!(r#"
-// <html>
-// <body>
-// <form action="/add-repo">
-// Add repo: <input name=repo type=text />
-// </form>
-// </body>
-// </html>
-// "#);
-//     Ok(body.into())
-    loop {}
+    Ok(html(r#"
+<html>
+<body>
+<form action="/add-repo" method=post>
+Add repo: <input name=repo type=text />
+</form>
+</body>
+</html>
+"#))
 }
 
 //     fn not_found(&self) -> Vec<u8> {
@@ -255,14 +262,26 @@ fn index(_req: &mut Request) -> BorsResult<Response> {
 //             </html>
 //         "#.to_vec()
 //     }
-//
-//     fn fail(&self, e: Error) -> Vec<u8> {
-//         format!(r#"
-//             <html>
-//             <body>
-//             error in last request: {}
-//             </body>
-//             </html>
-//         "#, handlebars::html_escape(&format!("{:?}", e))).into()
-//     }
-// }
+
+fn html(text: &str) -> Response {
+    let mut headers = HashMap::new();
+    headers.insert("Content-Type".to_string(),
+                   vec!["text/html; charset=utf-8".to_string()]);
+    headers.insert("Content-Length".to_string(), vec![text.len().to_string()]);
+    Response {
+        status: (200, "OK"),
+        headers: headers,
+        body: Box::new(Cursor::new(text.to_string().into_bytes())),
+    }
+}
+
+fn redirect(url: &str) -> Response {
+    let mut headers = HashMap::new();
+    headers.insert("Location".to_string(), vec![url.to_string()]);
+    headers.insert("Content-Length".to_string(), vec!["0".to_string()]);
+    Response {
+        status: (302, "Found"),
+        headers: headers,
+        body: Box::new(io::empty()),
+    }
+}

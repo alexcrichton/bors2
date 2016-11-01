@@ -1,3 +1,4 @@
+use std::io;
 use std::str;
 
 use curl;
@@ -14,5 +15,6 @@ error_chain! {
         json::DecoderError, Json;
         str::Utf8Error, NotUtf8;
         pg::error::Error, PostgresError;
+        io::Error, Io;
     }
 }

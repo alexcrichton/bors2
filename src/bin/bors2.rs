@@ -50,7 +50,7 @@ fn main() {
     let threads = if bors_env == bors2::Env::Development {1} else {5};
     let mut cfg = civet::Config::new();
     cfg.port(addr.port()).threads(threads).keep_alive(true);
-    let _a = Server::start(cfg, app);
+    let _a = Server::start(cfg, app).unwrap();
     println!("listening on port {}", addr.port());
     if heroku {
         File::create("/tmp/app-initialized").unwrap();
