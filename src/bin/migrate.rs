@@ -51,7 +51,7 @@ fn rollback(tx: Transaction,
 
 fn migrations() -> Vec<Migration> {
     let migrations = vec![
-        Migration::add_table(20161030140653, "pull_requests", "
+        Migration::add_table(20161030140653, "projects", "
             id                      SERIAL PRIMARY KEY,
             repo_user               VARCHAR NOT NULL,
             repo_name               VARCHAR NOT NULL,
