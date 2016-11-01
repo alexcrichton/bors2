@@ -15,7 +15,7 @@
       "description": "GitHub client secret (created in GitHub settings)"
     },
     "HEROKU": "1",
-    "RUST_LOG": "debug"
+    "RUST_LOG": "info"
   },
   "addons": [
     {
