@@ -77,7 +77,7 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
 
     router.post("/add-repo", C(add_repo));
     router.get("/authorize/github", C(authorize_github));
-    router.post("/webhook/github/*repo", C(github_webhook));
+    router.post("/webhook/github/:user/:repo", C(github_webhook));
     router.get("/", C(index));
 
     let env = app.config.env;
@@ -283,16 +283,14 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
                        .expect("signature not present")[0].to_string();
     let id = req.headers().find("X-GitHub-Delivery")
                 .expect("delivery not present")[0].to_string();
+    let user = req.params()["user"].to_string();
     let repo = req.params()["repo"].to_string();
-    let mut parts = repo.splitn(2, '/');
-    let user = parts.next().unwrap();
-    let repo = parts.next().unwrap();
 
     let mut body = Vec::new();
     try!(req.body().read_to_end(&mut body));
 
     let tx = try!(req.tx());
-    let project = match try!(Project::find_by_name(tx, user, repo)) {
+    let project = match try!(Project::find_by_name(tx, &user, &repo)) {
         Some(project) => project,
         None => return Err("no project found".into()),
     };

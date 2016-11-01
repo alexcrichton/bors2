@@ -36,8 +36,8 @@ impl Project {
                         repo: &str) -> BorsResult<Option<Project>> {
         let stmt = try!(conn.prepare("SELECT * FROM projects
                                       WHERE repo_user = $1 AND repo_name = $2
-                                      LIMIT 1"));
-        let rows = try!(stmt.query(&[&user, &repo]));
+                                      LIMIT 1").chain_err(|| "failed to prepare"));
+        let rows = try!(stmt.query(&[&user, &repo]).chain_err(|| "failed to query"));
         Ok(rows.into_iter().next().as_ref().map(Project::from_row))
     }
 
