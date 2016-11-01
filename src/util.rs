@@ -14,7 +14,17 @@ impl Handler for C {
                 req.commit();
                 Ok(resp)
             }
-            Err(e) => Err(Box::new(e)),
+            Err(e) => {
+                {
+                    error!("top-level error: {}", e);
+                    let mut cur = e.cause();
+                    while let Some(e) = cur {
+                        error!("error: {}", e);
+                        cur = e.cause();
+                    }
+                }
+                Err(Box::new(e))
+            }
         }
     }
 }
