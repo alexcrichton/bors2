@@ -32,6 +32,7 @@ use app::{App, RequestApp};
 use db::RequestTransaction;
 use errors::*;
 use models::*;
+use util::C;
 
 #[derive(Clone)]
 pub struct Config {
@@ -69,9 +70,9 @@ pub fn env(s: &str) -> String {
 pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     let mut router = RouteBuilder::new();
 
-    router.post("/add-repo", add_repo);
-    router.get("/authorize/github", authorize_github);
-    router.get("/", index);
+    router.post("/add-repo", C(add_repo));
+    router.get("/authorize/github", C(authorize_github));
+    router.get("/", C(index));
 
     let env = app.config.env;
     let mut m = MiddlewareBuilder::new(router);
