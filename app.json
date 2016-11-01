@@ -4,7 +4,7 @@
   "repository": "https://github.com/alexcrichton/bors2",
   "keywords": ["rust", "ci"],
   "env": {
-    "SECRET_TOKEN": {
+    "SESSION_KEY": {
       "description": "Cookie secret token",
       "generator": "secret"
     },
