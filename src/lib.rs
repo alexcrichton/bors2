@@ -31,7 +31,7 @@ use conduit_router::{RouteBuilder, RequestParams};
 use rand::{Rng, thread_rng};
 use openssl::crypto::hmac;
 use openssl::crypto::hash::Type;
-use rustc_serialize::hex::{FromHex, ToHex};
+use rustc_serialize::hex::ToHex;
 
 use app::{App, RequestApp};
 use db::RequestTransaction;
@@ -295,7 +295,7 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
         None => return Err("no project found".into()),
     };
 
-    let secret = try!(project.github_webhook_secret.from_hex());
+    let secret = project.github_webhook_secret.as_bytes();
     let my_signature = try!(hmac::hmac(Type::SHA1, &secret, &body));
     let my_signature = format!("sha1={}", my_signature.to_hex());
     if !openssl::crypto::memcmp::eq(signature.as_bytes(), my_signature.as_bytes()) {
