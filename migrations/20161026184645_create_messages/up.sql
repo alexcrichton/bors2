@@ -1,5 +1,0 @@
-CREATE TABLE messages (
-  id SERIAL PRIMARY KEY,
-  provider INTEGER NOT NULL,
-  payload VARCHAR NOT NULL
-);
