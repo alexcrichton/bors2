@@ -229,6 +229,13 @@ fn add_github_webhook_to_bors2(app: &App,
         name: "web".to_string(),
         active: true,
         events: vec![
+            "issue_comment".to_string(),
+            "issues".to_string(),
+            "pull_request".to_string(),
+            "pull_request_review".to_string(),
+            "pull_request_review_comment".to_string(),
+            "status".to_string(),
+            "label".to_string(),
         ],
         config: github::CreateWebhookConfig {
             content_type: "json".to_string(),
