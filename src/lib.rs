@@ -29,7 +29,9 @@ use conduit_router::RouteBuilder;
 use rand::{Rng, thread_rng};
 
 use app::{App, RequestApp};
+use db::RequestTransaction;
 use errors::*;
+use models::*;
 
 #[derive(Clone)]
 pub struct Config {
@@ -136,26 +138,24 @@ fn add_repo(req: &mut Request) -> BorsResult<Response> {
 }
 
 fn authorize_github(req: &mut Request) -> BorsResult<Response> {
-    {
-        let query = req.query_string().unwrap_or("");
-        let query = url::form_urlencoded::parse(query.as_bytes()).collect::<Vec<_>>();
-        let code = query.iter()
-                        .find(|&&(ref a, _)| a == "code")
-                        .map(|&(_, ref value)| &value[..])
-                        .expect("code not present in url");
-        let state = query.iter()
-                         .find(|&&(ref a, _)| a == "state")
-                         .map(|&(_, ref value)| &value[..])
-                         .expect("state not present in url");
-        try!(add_project(req.app(), &code, &state).chain_err(|| {
-            "failed to add project"
-        }));
-    }
+    let query = req.query_string().unwrap_or("").to_string();
+    let query = url::form_urlencoded::parse(query.as_bytes()).collect::<Vec<_>>();
+    let code = query.iter()
+                    .find(|&&(ref a, _)| a == "code")
+                    .map(|&(_, ref value)| &value[..])
+                    .expect("code not present in url");
+    let state = query.iter()
+                     .find(|&&(ref a, _)| a == "state")
+                     .map(|&(_, ref value)| &value[..])
+                     .expect("state not present in url");
+    try!(add_project(req, &code, &state).chain_err(|| {
+        "failed to add project"
+    }));
     index(req)
 }
 
-fn add_project(app: &App, code: &str, repo_name: &str) -> BorsResult<()> {
-    let github_access_token = try!(app.github.exchange(code.to_string()));
+fn add_project(req: &mut Request, code: &str, repo_name: &str) -> BorsResult<()> {
+    let github_access_token = try!(req.app().github.exchange(code.to_string()));
 
     // let travis_token = try!(self.negotiate_travis_token(&github_access_token));
     // println!("travis token: {}", travis_token);
@@ -166,24 +166,17 @@ fn add_project(app: &App, code: &str, repo_name: &str) -> BorsResult<()> {
     let github_webhook_secret = thread_rng().gen_ascii_chars().take(20)
                                             .collect::<String>();
 
-    try!(add_github_webhook_to_bors2(app,
+    try!(add_github_webhook_to_bors2(req.app(),
                                      &github_access_token,
                                      user,
                                      name,
                                      &github_webhook_secret));
 
-    // let new_project = NewProject {
-    //     repo_user: user,
-    //     repo_name: name,
-    //     github_access_token: &github_access_token.access_token,
-    //     github_webhook_secret: &github_webhook_secret,
-    // };
-    // let conn = bors2::establish_connection();
-    // let project: Project = try!(diesel::insert(&new_project)
-    //                                    .into(projects::table)
-    //                                    .get_result(conn));
-    // drop(project);
-
+    try!(Project::insert(try!(req.tx()),
+                         user,
+                         name,
+                         &github_access_token.access_token,
+                         &github_webhook_secret));
     Ok(())
 }
 //
