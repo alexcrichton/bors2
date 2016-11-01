@@ -29,11 +29,11 @@ impl Event {
                                        event,
                                        state)
                                       VALUES ($1, $2, $3, $4, 0)
-                                      RETURNING *").chain_err(|| "wut"));
+                                      RETURNING *"));
         let rows = try!(stmt.query(&[&(provider as i32),
                                      &provider_event_id,
                                      &provider_event,
-                                     &event]).chain_err(|| "wut2"));
+                                     &event]));
         Ok(Event::from_row(&rows.iter().next().unwrap()))
     }
 
