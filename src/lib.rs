@@ -152,7 +152,7 @@ fn authorize_github(req: &mut Request) -> BorsResult<Response> {
     try!(add_project(req, &code, &state).chain_err(|| {
         "failed to add project"
     }));
-    index(req)
+    Ok(redirect("/"))
 }
 
 fn add_project(req: &mut Request, code: &str, repo_name: &str) -> BorsResult<()> {
@@ -246,16 +246,6 @@ Add repo: <input name=repo type=text />
 </html>
 "#))
 }
-
-//     fn not_found(&self) -> Vec<u8> {
-//         br#"
-//             <html>
-//             <body>
-//             Not found
-//             </body>
-//             </html>
-//         "#.to_vec()
-//     }
 
 fn html(text: &str) -> Response {
     let mut headers = HashMap::new();
