@@ -18,4 +18,4 @@ test_script:
 
 notifications:
   - provider: Webhook
-    url: https://bors2-test.herokuapp.com/webhook/travis/alexcrichton/bors2
+    url: https://bors2-test.herokuapp.com/webhook/appveyor/alexcrichton/bors2
