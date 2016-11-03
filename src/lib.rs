@@ -18,6 +18,7 @@ extern crate postgres as pg;
 extern crate r2d2;
 extern crate r2d2_postgres;
 extern crate rand;
+extern crate base64;
 extern crate rustc_serialize;
 extern crate url;
 
@@ -31,6 +32,7 @@ use conduit_router::{RouteBuilder, RequestParams};
 use rand::{Rng, thread_rng};
 use openssl::crypto::hmac;
 use openssl::crypto::hash::Type;
+use openssl::crypto::pkey::PKey;
 use rustc_serialize::hex::ToHex;
 
 use app::{App, RequestApp};
@@ -84,7 +86,7 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     router.get("/authorize/github", C(authorize_github));
     router.post("/webhook/github/:user/:repo", C(github_webhook));
     router.post("/webhook/appveyor/:user/:repo", C(appveyor_webhook));
-    router.post("/webhook/travis/:user/:repo", C(travis_webhook));
+    router.post("/webhook/travis", C(travis_webhook));
     router.get("/assets/*path", conduit_static::Static::new("."));
 
     let env = app.config.env;
@@ -397,7 +399,44 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
 }
 
 fn travis_webhook(req: &mut Request) -> BorsResult<Response> {
-    panic!()
+    let slug = req.headers().find("Travis-Repo-Slug")
+                  .expect("slug not present")[0].to_string();
+    let signature = req.headers().find("Signature")
+                       .expect("signature not present")[0].to_string();
+    let mut body = Vec::new();
+    try!(req.body().read_to_end(&mut body));
+    let query = url::form_urlencoded::parse(&body).collect::<Vec<_>>();
+    let payload = &query.iter().find(|q| q.0 == "payload").unwrap().1;
+    let signature = try!(base64::decode(&signature).chain_err(|| {
+        "signature was not valid base64"
+    }));
+
+    let url = "https://api.travis-ci.org/config";
+    let config: travis::GetConfig = try!(http::get(url, &[]).chain_err(|| {
+        "failed to get travis config"
+    }));
+    let key = config.config.notifications.webhook.public_key;
+    let key = try!(PKey::public_key_from_pem(&key.as_bytes()).chain_err(|| {
+        "key was not valid pem"
+    }));
+    let rsa = try!(key.get_rsa().chain_err(|| "not an rsa key"));
+    try!(rsa.verify(Type::SHA1, &signature, payload.as_bytes()).chain_err(|| {
+        "invalid signature"
+    }));
+
+    let mut parts = slug.splitn(2, '/');
+    let repo_user = parts.next().unwrap();
+    let repo_name = parts.next().unwrap();
+
+    // Verify this is one of our projects
+    let project = try!(Project::find_by_name(try!(req.tx()),
+                                             repo_user,
+                                             repo_name));
+    drop(project);
+
+    try!(Event::insert(try!(req.tx()), Provider::Travis, "", "", payload));
+
+    Ok(util::html(""))
 }
 
 fn appveyor_webhook(req: &mut Request) -> BorsResult<Response> {

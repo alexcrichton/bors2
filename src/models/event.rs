@@ -14,6 +14,8 @@ pub struct Event {
 
 pub enum Provider {
     GitHub,
+    Travis,
+    AppVeyor,
 }
 
 impl Event {
@@ -42,6 +44,8 @@ impl Event {
             id: row.get("id"),
             provider_id: match row.get("provider_id") {
                 0 => Provider::GitHub,
+                1 => Provider::Travis,
+                2 => Provider::AppVeyor,
                 n => panic!("invalid id: {}", n),
             },
             provider_event_id: row.get("provider_event_id"),
