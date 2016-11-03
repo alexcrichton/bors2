@@ -5,7 +5,7 @@
   "keywords": ["rust", "ci"],
   "env": {
     "SESSION_KEY": {
-      "description": "Cookie secret token",
+      "description": "Cookie session key",
       "generator": "secret"
     },
     "GH_CLIENT_ID": {
