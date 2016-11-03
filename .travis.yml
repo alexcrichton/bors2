@@ -5,4 +5,4 @@ rust:
   - nightly
 
 notifications:
-  webhooks: https://bors2-test.herokuapp.com/webhook/travis/alexcrichton/bors2
+  webhooks: https://bors2-test.herokuapp.com/webhook/travis

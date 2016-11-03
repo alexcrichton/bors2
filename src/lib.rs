@@ -420,7 +420,7 @@ fn travis_webhook(req: &mut Request) -> BorsResult<Response> {
         "key was not valid pem"
     }));
     let rsa = try!(key.get_rsa().chain_err(|| "not an rsa key"));
-    try!(rsa.verify(Type::SHA1, &signature, payload.as_bytes()).chain_err(|| {
+    try!(rsa.verify(Type::SHA1, payload.as_bytes(), &signature).chain_err(|| {
         "invalid signature"
     }));
 
