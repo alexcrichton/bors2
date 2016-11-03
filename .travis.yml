@@ -3,3 +3,6 @@ rust:
   - stable
   - beta
   - nightly
+
+notifications:
+  webhooks: https://bors2-test.herokuapp.com/webhook/travis/alexcrichton/bors2

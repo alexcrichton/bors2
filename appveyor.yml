@@ -15,3 +15,7 @@ install:
 
 test_script:
   - cargo build
+
+notifications:
+  - provider: Webhook
+    url: https://bors2-test.herokuapp.com/webhook/travis/alexcrichton/bors2
