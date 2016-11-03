@@ -40,3 +40,9 @@ pub struct Authorization {
     pub scopes: Vec<String>,
     pub token: String,
 }
+
+#[derive(RustcDecodable)]
+pub struct Repository {
+    pub id: i32,
+    pub name: String,
+}

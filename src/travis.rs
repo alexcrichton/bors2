@@ -1,9 +1,9 @@
-#[derive(RustcEncodable)]
-pub struct TravisAuthGithub {
-    pub github_token: String,
+#[derive(RustcDecodable)]
+pub struct GetRepository {
+    pub repo: Repository,
 }
 
 #[derive(RustcDecodable)]
-pub struct TravisAccessToken {
-    pub access_token: String,
+pub struct Repository {
+    pub id: i32,
 }

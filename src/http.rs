@@ -38,6 +38,17 @@ pub fn github_delete(url: &str, auth: &Token) -> BorsResult<()> {
     delete(&format!("https://api.github.com{}", url), &headers)
 }
 
+pub fn travis_get<T>(url: &str, token: &str) -> BorsResult<T>
+    where T: Decodable,
+{
+    let headers = vec![
+        format!("Authorization: token {}", token),
+        format!("Accept: application/vnd.travis-ci.2+json"),
+    ];
+
+    get(&format!("https://api.travis-ci.org{}", url), &headers)
+}
+
 pub fn get<T>(url: &str, headers: &[String]) -> BorsResult<T>
     where T: Decodable,
 {

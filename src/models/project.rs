@@ -7,6 +7,7 @@ pub struct Project {
     pub id: i32,
     pub repo_user: String,
     pub repo_name: String,
+    pub github_repo_id: i32,
     pub github_access_token: String,
     pub github_webhook_secret: String,
     pub appveyor_token: Option<String>,
@@ -17,15 +18,20 @@ impl Project {
     pub fn insert(conn: &GenericConnection,
                   repo_user: &str,
                   repo_name: &str,
+                  github_repo_id: i32,
                   github_access_token: &str,
                   github_webhook_secret: &str) -> BorsResult<Project> {
         let stmt = try!(conn.prepare("INSERT INTO projects
-                                      (repo_user, repo_name, github_access_token,
+                                      (repo_user,
+                                       repo_name,
+                                       github_repo_id,
+                                       github_access_token,
                                        github_webhook_secret)
-                                      VALUES ($1, $2, $3, $4)
+                                      VALUES ($1, $2, $3, $4, $5)
                                       RETURNING *"));
         let rows = try!(stmt.query(&[&repo_user,
                                      &repo_name,
+                                     &github_repo_id,
                                      &github_access_token,
                                      &github_webhook_secret]));
         Ok(Project::from_row(&rows.iter().next().unwrap()))
@@ -41,11 +47,18 @@ impl Project {
         Ok(rows.into_iter().next().as_ref().map(Project::from_row))
     }
 
+    pub fn all(conn: &GenericConnection) -> BorsResult<Vec<Project>> {
+        let stmt = try!(conn.prepare("SELECT * FROM projects"));
+        let rows = try!(stmt.query(&[]));
+        Ok(rows.iter().map(|r| Project::from_row(&r)).collect())
+    }
+
     pub fn from_row(row: &Row) -> Project {
         Project {
             id: row.get("id"),
             repo_user: row.get("repo_user"),
             repo_name: row.get("repo_name"),
+            github_repo_id: row.get("github_repo_id"),
             github_access_token: row.get("github_access_token"),
             github_webhook_secret: row.get("github_webhook_secret"),
             appveyor_token: row.get("appveyor_token"),

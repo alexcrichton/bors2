@@ -55,6 +55,7 @@ fn migrations() -> Vec<Migration> {
             id                      SERIAL PRIMARY KEY,
             repo_user               VARCHAR NOT NULL,
             repo_name               VARCHAR NOT NULL,
+            github_repo_id          INTEGER NOT NULL,
             github_webhook_secret   VARCHAR NOT NULL,
             github_access_token     VARCHAR NOT NULL,
             travis_access_token     VARCHAR,

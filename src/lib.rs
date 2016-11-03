@@ -19,13 +19,11 @@ extern crate rand;
 extern crate rustc_serialize;
 extern crate url;
 
-use std::collections::HashMap;
 use std::error::Error;
-use std::io::{self, Cursor};
 use std::str;
 use std::sync::Arc;
 
-use conduit::{Request, Response};
+use conduit::{Request, Response, Handler};
 use conduit_middleware::MiddlewareBuilder;
 use conduit_router::{RouteBuilder, RequestParams};
 use rand::{Rng, thread_rng};
@@ -75,13 +73,15 @@ pub fn env(s: &str) -> String {
 pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     let mut router = RouteBuilder::new();
 
-    router.post("/add-repo", C(add_repo));
+    router.get("/", C(repos));
+    router.post("/repos", C(repo_new));
+    router.get("/repos/:user/:repo", C(repo_show));
+    router.post("/repos/:user/:repo/travis-auth", C(authorize_travis));
     router.get("/authorize/github", C(authorize_github));
     router.post("/webhook/github/:user/:repo", C(github_webhook));
-    router.get("/", C(index));
 
     let env = app.config.env;
-    let mut m = MiddlewareBuilder::new(router);
+    let mut m = MiddlewareBuilder::new(R404(router));
     if env == Env::Development {
         m.add(DebugMiddleware);
     }
@@ -130,7 +130,7 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     }
 }
 
-fn add_repo(req: &mut Request) -> BorsResult<Response> {
+fn repo_new(req: &mut Request) -> BorsResult<Response> {
     let mut query = Vec::new();
     try!(req.body().read_to_end(&mut query));
 
@@ -141,7 +141,7 @@ fn add_repo(req: &mut Request) -> BorsResult<Response> {
     let app = req.app();
     let redirect_url = app.github.authorize_url(repo.into_owned());
     debug!("oauth redirect to {}", redirect_url);
-    Ok(redirect(&redirect_url.to_string()))
+    Ok(util::redirect(&redirect_url.to_string()))
 }
 
 fn authorize_github(req: &mut Request) -> BorsResult<Response> {
@@ -158,14 +158,15 @@ fn authorize_github(req: &mut Request) -> BorsResult<Response> {
     try!(add_project(req, &code, &state).chain_err(|| {
         "failed to add project"
     }));
-    Ok(redirect("/"))
+    Ok(util::redirect("/"))
 }
 
 fn add_project(req: &mut Request, code: &str, repo_name: &str) -> BorsResult<()> {
     let github_access_token = try!(req.app().github.exchange(code.to_string()));
 
-    // let travis_token = try!(self.negotiate_travis_token(&github_access_token));
-    // println!("travis token: {}", travis_token);
+    let url = format!("/repos/{}", repo_name);
+    let repo: github::Repository = try!(http::github_get(&url,
+                                                         &github_access_token));
 
     let mut parts = repo_name.splitn(2, '/');
     let user = parts.next().unwrap();
@@ -182,6 +183,7 @@ fn add_project(req: &mut Request, code: &str, repo_name: &str) -> BorsResult<()>
     try!(Project::insert(try!(req.tx()),
                          user,
                          name,
+                         repo.id,
                          &github_access_token.access_token,
                          &github_webhook_secret));
     Ok(())
@@ -247,39 +249,85 @@ fn add_github_webhook_to_bors2(app: &App,
     Ok(())
 }
 
-fn index(_req: &mut Request) -> BorsResult<Response> {
-    Ok(html(r#"
-<html>
-<body>
-<form action="/add-repo" method=post>
+fn authorize_travis(req: &mut Request) -> BorsResult<Response> {
+    let mut query = Vec::new();
+    try!(req.body().read_to_end(&mut query));
+    let query = url::form_urlencoded::parse(&query).collect::<Vec<_>>();
+    let token = query.iter().find(|pair| {
+        pair.0 == "token"
+    }).expect("token not found in body");
+    let token = &token.1;
+    let user = req.params()["user"].to_string();
+    let repo = req.params()["repo"].to_string();
+
+    let url = format!("/repos/{}/{}", user, repo);
+    println!("{:?}", query);
+    println!("{} {}", url, token);
+    let repo: travis::GetRepository = try!(http::travis_get(&url, &token));
+
+    Ok(util::redirect("/"))
+}
+
+fn repos(req: &mut Request) -> BorsResult<Response> {
+    let tx = try!(req.tx());
+    let projects = try!(Project::all(tx));
+    let mut page = format!(r#"
+<form action="/repos" method=post>
 Add repo: <input name=repo type=text />
 </form>
-</body>
-</html>
-"#))
+
+<table>
+"#);
+
+    for project in projects {
+        page.push_str(&format!("<tr>\
+            <td>\
+                <a href='/repos/{user}/{name}'>{user}/{name}</a>
+            </td>\
+        </tr>\n",
+        user = project.repo_user,
+        name = project.repo_name,
+        ));
+    }
+
+    page.push_str("\n</table>");
+
+    Ok(site_html(&page))
 }
 
-fn html(text: &str) -> Response {
-    let mut headers = HashMap::new();
-    headers.insert("Content-Type".to_string(),
-                   vec!["text/html; charset=utf-8".to_string()]);
-    headers.insert("Content-Length".to_string(), vec![text.len().to_string()]);
-    Response {
-        status: (200, "OK"),
-        headers: headers,
-        body: Box::new(Cursor::new(text.to_string().into_bytes())),
-    }
-}
+fn repo_show(req: &mut Request) -> BorsResult<Response> {
+    let user = req.params()["user"].to_string();
+    let repo = req.params()["repo"].to_string();
+    let app = req.app();
+    let tx = try!(req.tx());
+    let project = match try!(Project::find_by_name(tx, &user, &repo)) {
+        Some(project) => project,
+        None => return Err("no project found".into()),
+    };
 
-fn redirect(url: &str) -> Response {
-    let mut headers = HashMap::new();
-    headers.insert("Location".to_string(), vec![url.to_string()]);
-    headers.insert("Content-Length".to_string(), vec!["0".to_string()]);
-    Response {
-        status: (302, "Found"),
-        headers: headers,
-        body: Box::new(io::empty()),
+    let mut page = format!("\
+<h2>\
+    <a href='https://github.com/{repo_user}/{repo_name}'>\
+        {repo_user}/{repo_name}\
+    </a>\
+</h2>
+",
+        repo_name = project.repo_name,
+        repo_user = project.repo_user);
+
+    if project.travis_access_token.is_none() {
+        page.push_str(&format!("\
+            <a href='https://api.travis-ci.com/auth/handshake?redirect_uri={redirect}'>\
+                Authenticate Travis CI\
+            </a>
+        ",
+        redirect = format!("{}/repos/{}/{}/travis-auth",
+                           app.config.host,
+                           project.repo_user,
+                           project.repo_name)));
     }
+
+    Ok(site_html(&page))
 }
 
 fn github_webhook(req: &mut Request) -> BorsResult<Response> {
@@ -311,5 +359,34 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
 
     try!(Event::insert(tx, Provider::GitHub, &id, &event,
                        try!(str::from_utf8(&body))));
-    Ok(html(""))
+    Ok(util::html(""))
+}
+
+fn site_html(body: &str) -> Response {
+    util::html(&format!(r#"
+<html>
+<body>
+{}
+</body>
+</html>
+"#, body))
+}
+
+pub struct R404(pub RouteBuilder);
+
+impl Handler for R404 {
+    fn call(&self, req: &mut Request) -> Result<Response, Box<Error+Send>> {
+        let R404(ref router) = *self;
+        match router.recognize(&req.method(), req.path()) {
+            Ok(m) => {
+                req.mut_extensions().insert(m.params.clone());
+                m.handler.call(req)
+            }
+            Err(..) => {
+                let mut response = site_html("page not found");
+                response.status = (404, "Not Found");
+                return Ok(response)
+            }
+        }
+    }
 }
