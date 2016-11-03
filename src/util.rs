@@ -17,17 +17,7 @@ impl Handler for C {
                 req.commit();
                 Ok(resp)
             }
-            Err(e) => {
-                {
-                    error!("top-level error: {}", e);
-                    let mut cur = e.cause();
-                    while let Some(e) = cur {
-                        error!("error: {}", e);
-                        cur = e.cause();
-                    }
-                }
-                Err(Box::new(e))
-            }
+            Err(e) => Err(Box::new(e)),
         }
     }
 }
@@ -52,5 +42,22 @@ pub fn redirect(url: &str) -> Response {
         status: (302, "Found"),
         headers: headers,
         body: Box::new(io::empty()),
+    }
+}
+
+pub trait RequestFlash {
+    fn set_flash_error(&mut self, err: &str);
+    fn flash_error(&self) -> Option<&str>;
+}
+
+struct FlashError(String);
+
+impl<'a> RequestFlash for Request + 'a {
+    fn set_flash_error(&mut self, err: &str) {
+        self.mut_extensions().insert(FlashError(err.to_string()));
+    }
+
+    fn flash_error(&self) -> Option<&str> {
+        self.extensions().find::<FlashError>().map(|s| &*s.0)
     }
 }

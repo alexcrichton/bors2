@@ -39,18 +39,41 @@ impl Project {
 
     pub fn find_by_name(conn: &GenericConnection,
                         user: &str,
-                        repo: &str) -> BorsResult<Option<Project>> {
+                        repo: &str) -> BorsResult<Project> {
         let stmt = try!(conn.prepare("SELECT * FROM projects
                                       WHERE repo_user = $1 AND repo_name = $2
                                       LIMIT 1"));
         let rows = try!(stmt.query(&[&user, &repo]));
-        Ok(rows.into_iter().next().as_ref().map(Project::from_row))
+        match rows.into_iter().next() {
+            Some(ref p) => Ok(Project::from_row(p)),
+            None => Err(BorsErrorKind::MissingProject.into()),
+        }
     }
 
     pub fn all(conn: &GenericConnection) -> BorsResult<Vec<Project>> {
         let stmt = try!(conn.prepare("SELECT * FROM projects"));
         let rows = try!(stmt.query(&[]));
         Ok(rows.iter().map(|r| Project::from_row(&r)).collect())
+    }
+
+    pub fn set_travis_token(&self,
+                            conn: &GenericConnection,
+                            token: &str) -> BorsResult<()> {
+        let stmt = try!(conn.prepare("UPDATE projects
+                                         SET travis_access_token = $1
+                                       WHERE id = $2"));
+        try!(stmt.query(&[&token, &self.id]));
+        Ok(())
+    }
+
+    pub fn set_appveyor_token(&self,
+                              conn: &GenericConnection,
+                              token: &str) -> BorsResult<()> {
+        let stmt = try!(conn.prepare("UPDATE projects
+                                         SET appveyor_token = $1
+                                       WHERE id = $2"));
+        try!(stmt.query(&[&token, &self.id]));
+        Ok(())
     }
 
     pub fn from_row(row: &Row) -> Project {

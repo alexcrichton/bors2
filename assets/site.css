@@ -1,0 +1,7 @@
+.flash.error {
+  margin: 20px;
+  background: #f6d0d0;
+  border: 3px solid #f99;
+  padding: 10px;
+  display: inline-block;
+}

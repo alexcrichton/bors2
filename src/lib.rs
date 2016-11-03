@@ -6,11 +6,13 @@ extern crate conduit;
 extern crate conduit_conditional_get;
 extern crate conduit_cookie;
 extern crate conduit_log_requests;
+extern crate handlebars;
 extern crate conduit_middleware;
 extern crate conduit_router;
 extern crate curl;
 extern crate lazycell;
 extern crate oauth2;
+extern crate conduit_static;
 extern crate openssl;
 extern crate postgres as pg;
 extern crate r2d2;
@@ -35,7 +37,7 @@ use app::{App, RequestApp};
 use db::RequestTransaction;
 use errors::*;
 use models::*;
-use util::C;
+use util::{RequestFlash, C};
 
 #[derive(Clone)]
 pub struct Config {
@@ -61,6 +63,7 @@ pub mod github;
 pub mod http;
 pub mod models;
 pub mod travis;
+pub mod appveyor;
 pub mod util;
 
 pub fn env(s: &str) -> String {
@@ -76,9 +79,11 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     router.get("/", C(repos));
     router.post("/repos", C(repo_new));
     router.get("/repos/:user/:repo", C(repo_show));
-    router.post("/repos/:user/:repo/travis-auth", C(authorize_travis));
+    router.post("/repos/:user/:repo/add-travis-token", C(repo_add_travis));
+    router.post("/repos/:user/:repo/add-appveyor-token", C(repo_add_appveyor));
     router.get("/authorize/github", C(authorize_github));
     router.post("/webhook/github/:user/:repo", C(github_webhook));
+    router.get("/assets/*path", conduit_static::Static::new("."));
 
     let env = app.config.env;
     let mut m = MiddlewareBuilder::new(R404(router));
@@ -188,38 +193,6 @@ fn add_project(req: &mut Request, code: &str, repo_name: &str) -> BorsResult<()>
                          &github_webhook_secret));
     Ok(())
 }
-//
-//     // fn negotiate_travis_token(&self, github_access_token: &oauth2::Token)
-//     //                           -> BorsResult<String> {
-//     //     // let auth: Authorization = try!(github_post("/authorizations",
-//     //     //                                            &github_access_token,
-//     //     //                                            &CreateAuthorization {
-//     //     //     // see https://docs.travis-ci.com/api#creating-a-temporary-github-token
-//     //     //     scopes: vec![
-//     //     //         "read:org".into(),
-//     //     //         "user:email".into(),
-//     //     //         "repo_deployment".into(),
-//     //     //         "repo:status".into(),
-//     //     //         "write:repo_hook".into(),
-//     //     //     ],
-//     //     //     note: "temporary token to auth against travis".to_string(),
-//     //     // }));
-//     //
-//     //     let travis_headers = vec![
-//     //         format!("Accept: application/vnd.travis-ci.2+json"),
-//     //         format!("Content-Type: application/json"),
-//     //     ];
-//     //     let url = "https://api.travis-ci.org/auth/github";
-//     //     let travis_auth: TravisAccessToken = try!(post(url,
-//     //                                                    &travis_headers,
-//     //                                                    &TravisAuthGithub {
-//     //         github_token: github_access_token.access_token.clone(),
-//     //     }));
-//     //
-//     //     // try!(github_delete(&auth.url, &github_access_token));
-//     //
-//     //     Ok(travis_auth.access_token)
-//     // }
 
 fn add_github_webhook_to_bors2(app: &App,
                                token: &oauth2::Token,
@@ -249,23 +222,78 @@ fn add_github_webhook_to_bors2(app: &App,
     Ok(())
 }
 
-fn authorize_travis(req: &mut Request) -> BorsResult<Response> {
+fn repo_add_travis(req: &mut Request) -> BorsResult<Response> {
     let mut query = Vec::new();
     try!(req.body().read_to_end(&mut query));
     let query = url::form_urlencoded::parse(&query).collect::<Vec<_>>();
-    let token = query.iter().find(|pair| {
-        pair.0 == "token"
-    }).expect("token not found in body");
+
+    let token = query.iter().find(|q| q.0 == "token").unwrap();
     let token = &token.1;
-    let user = req.params()["user"].to_string();
-    let repo = req.params()["repo"].to_string();
 
-    let url = format!("/repos/{}/{}", user, repo);
-    println!("{:?}", query);
-    println!("{} {}", url, token);
-    let repo: travis::GetRepository = try!(http::travis_get(&url, &token));
+    let project = try!(req_project(req));
 
-    Ok(util::redirect("/"))
+    let url = format!("/repos/{}/{}", project.repo_user, project.repo_name);
+    let travis_repo: travis::GetRepository = match http::travis_get(&url, &token) {
+        Ok(repo) => repo,
+        Err(_) => {
+            req.set_flash_error("travis token was invalid");
+            return repo_show(req);
+        }
+    };
+
+    let url = format!("/repos/{}/settings", travis_repo.repo.id);
+    if http::travis_get::<travis::GetRepoSettings>(&url, &token).is_err() {
+        req.set_flash_error("project not registered?");
+        return repo_show(req);
+    }
+
+    try!(project.set_travis_token(try!(req.tx()), &token));
+
+    Ok(util::redirect(&format!("/repos/{}/{}",
+                               project.repo_user,
+                               project.repo_name)))
+}
+
+fn repo_add_appveyor(req: &mut Request) -> BorsResult<Response> {
+    let mut query = Vec::new();
+    try!(req.body().read_to_end(&mut query));
+    let query = url::form_urlencoded::parse(&query).collect::<Vec<_>>();
+
+    let token = query.iter().find(|q| q.0 == "token").unwrap();
+    let token = &token.1;
+    let project = try!(req_project(req));
+
+    // Test out the token by fetching the user's list of projects
+    let url = format!("/projects");
+    let projects: Vec<appveyor::Project> = match http::appveyor_get(&url, &token) {
+        Ok(projects) => projects,
+        Err(_) => {
+            req.set_flash_error("appveyor token was invalid");
+            return repo_show(req)
+        }
+    };
+    let repo_name = format!("{}/{}", project.repo_user, project.repo_name);
+    let appveyor_project = projects.iter().filter(|p| {
+        p.repositoryType == "github" && p.repositoryName == repo_name
+    }).next();
+
+    // Register the project if it's not already registered
+    if appveyor_project.is_none() {
+        let new = appveyor::NewProject {
+            repositoryProvider: "gitHub".to_string(),
+            repositoryName: repo_name,
+        };
+        let project: appveyor::Project = try!(http::appveyor_post("/projects",
+                                                                  &token,
+                                                                  &new));
+        drop(project);
+    }
+
+    // Ok, set the token and go back to the repo
+    try!(project.set_appveyor_token(try!(req.tx()), &token));
+    Ok(util::redirect(&format!("/repos/{}/{}",
+                               project.repo_user,
+                               project.repo_name)))
 }
 
 fn repos(req: &mut Request) -> BorsResult<Response> {
@@ -292,18 +320,11 @@ Add repo: <input name=repo type=text />
 
     page.push_str("\n</table>");
 
-    Ok(site_html(&page))
+    Ok(site_html(req, &page))
 }
 
 fn repo_show(req: &mut Request) -> BorsResult<Response> {
-    let user = req.params()["user"].to_string();
-    let repo = req.params()["repo"].to_string();
-    let app = req.app();
-    let tx = try!(req.tx());
-    let project = match try!(Project::find_by_name(tx, &user, &repo)) {
-        Some(project) => project,
-        None => return Err("no project found".into()),
-    };
+    let project = try!(req_project(req));
 
     let mut page = format!("\
 <h2>\
@@ -317,17 +338,33 @@ fn repo_show(req: &mut Request) -> BorsResult<Response> {
 
     if project.travis_access_token.is_none() {
         page.push_str(&format!("\
-            <a href='https://api.travis-ci.com/auth/handshake?redirect_uri={redirect}'>\
-                Authenticate Travis CI\
-            </a>
+            <form action='/repos/{repo_user}/{repo_name}/add-travis-token' \
+                  method=post>
+                <input type=text name=token placeholder='Enter travis token'/>
+            </form>
         ",
-        redirect = format!("{}/repos/{}/{}/travis-auth",
-                           app.config.host,
-                           project.repo_user,
-                           project.repo_name)));
+        repo_user = project.repo_user,
+        repo_name = project.repo_name));
     }
 
-    Ok(site_html(&page))
+    if project.appveyor_token.is_none() {
+        page.push_str(&format!("\
+            <form action='/repos/{repo_user}/{repo_name}/add-appveyor-token' \
+                  method=post>
+                <input type=text name=token placeholder='Enter appveyor token'/>
+            </form>
+        ",
+        repo_user = project.repo_user,
+        repo_name = project.repo_name));
+    }
+
+    Ok(site_html(req, &page))
+}
+
+fn req_project(req: &Request) -> BorsResult<Project> {
+    let user = &req.params()["user"];
+    let repo = &req.params()["repo"];
+    Project::find_by_name(try!(req.tx()), user, repo)
 }
 
 fn github_webhook(req: &mut Request) -> BorsResult<Response> {
@@ -337,17 +374,12 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
                        .expect("signature not present")[0].to_string();
     let id = req.headers().find("X-GitHub-Delivery")
                 .expect("delivery not present")[0].to_string();
-    let user = req.params()["user"].to_string();
-    let repo = req.params()["repo"].to_string();
 
     let mut body = Vec::new();
     try!(req.body().read_to_end(&mut body));
 
     let tx = try!(req.tx());
-    let project = match try!(Project::find_by_name(tx, &user, &repo)) {
-        Some(project) => project,
-        None => return Err("no project found".into()),
-    };
+    let project = try!(req_project(req));
 
     let my_signature = try!(hmac::hmac(Type::SHA1,
                                        project.github_webhook_secret.as_bytes(),
@@ -362,14 +394,28 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
     Ok(util::html(""))
 }
 
-fn site_html(body: &str) -> Response {
-    util::html(&format!(r#"
+fn site_html(req: &Request, body: &str) -> Response {
+    let mut page = format!(r#"
 <html>
+<head>
+<link href="/assets/site.css" rel=stylesheet>
+</head>
 <body>
-{}
+    "#);
+
+    if let Some(error) = req.flash_error() {
+        page.push_str(&format!("\
+            <div class='flash error'>{}</div>
+        ", handlebars::html_escape(error)));
+    }
+
+    page.push_str(body);
+    page.push_str("
 </body>
 </html>
-"#, body))
+");
+
+    util::html(&page)
 }
 
 pub struct R404(pub RouteBuilder);
@@ -377,15 +423,43 @@ pub struct R404(pub RouteBuilder);
 impl Handler for R404 {
     fn call(&self, req: &mut Request) -> Result<Response, Box<Error+Send>> {
         let R404(ref router) = *self;
-        match router.recognize(&req.method(), req.path()) {
+        let res = match router.recognize(&req.method(), req.path()) {
             Ok(m) => {
                 req.mut_extensions().insert(m.params.clone());
                 m.handler.call(req)
             }
-            Err(..) => {
-                let mut response = site_html("page not found");
+            Err(_) => {
+                let mut response = site_html(req, "page not found");
                 response.status = (404, "Not Found");
-                return Ok(response)
+                Ok(response)
+            }
+        };
+
+        let err = match res {
+            Ok(e) => return Ok(e),
+            Err(e) => {
+                match e.downcast::<BorsError>() {
+                    Ok(err) => err,
+                    Err(e) => return Err(e),
+                }
+            }
+        };
+
+        match *err.kind() {
+            BorsErrorKind::MissingProject => {
+                req.set_flash_error("user/repo combo not found");
+                repos(req).map_err(|e| Box::new(e) as Box<_>)
+            }
+            _ => {
+                {
+                    error!("top-level error: {}", err);
+                    let mut cur = err.cause();
+                    while let Some(e) = cur {
+                        error!("error: {}", e);
+                        cur = e.cause();
+                    }
+                }
+                Err(Box::new(err))
             }
         }
     }

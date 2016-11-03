@@ -49,6 +49,30 @@ pub fn travis_get<T>(url: &str, token: &str) -> BorsResult<T>
     get(&format!("https://api.travis-ci.org{}", url), &headers)
 }
 
+pub fn appveyor_get<T>(url: &str, token: &str) -> BorsResult<T>
+    where T: Decodable,
+{
+    let headers = vec![
+        format!("Authorization: Bearer {}", token),
+        format!("Accept: application/json"),
+    ];
+
+    get(&format!("https://ci.appveyor.com/api{}", url), &headers)
+}
+
+pub fn appveyor_post<T, U>(url: &str, token: &str, u: &U) -> BorsResult<T>
+    where T: Decodable,
+          U: Encodable,
+{
+    let headers = vec![
+        format!("Authorization: Bearer {}", token),
+        format!("Accept: application/json"),
+        format!("Content-Type: application/json"),
+    ];
+
+    post(&format!("https://ci.appveyor.com/api{}", url), &headers, u)
+}
+
 pub fn get<T>(url: &str, headers: &[String]) -> BorsResult<T>
     where T: Decodable,
 {

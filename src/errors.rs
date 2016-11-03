@@ -21,4 +21,9 @@ error_chain! {
         openssl::error::ErrorStack, Crypto;
         hex::FromHexError, Hex;
     }
+
+    errors {
+        MissingProject {
+        }
+    }
 }

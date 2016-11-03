@@ -12,6 +12,7 @@ conduit-git-http-backend = "0.8"
 conduit-log-requests = "0.8"
 conduit-middleware = "0.8"
 conduit-router = "0.8"
+conduit-static = "0.8.1"
 curl = "0.3"
 env_logger = { version = "0.3", default-features = false }
 error-chain = "0.5"
