@@ -83,6 +83,8 @@ pub fn middleware(app: Arc<App>) -> MiddlewareBuilder {
     router.post("/repos/:user/:repo/add-appveyor-token", C(repo_add_appveyor));
     router.get("/authorize/github", C(authorize_github));
     router.post("/webhook/github/:user/:repo", C(github_webhook));
+    router.post("/webhook/appveyor/:user/:repo", C(appveyor_webhook));
+    router.post("/webhook/travis/:user/:repo", C(travis_webhook));
     router.get("/assets/*path", conduit_static::Static::new("."));
 
     let env = app.config.env;
@@ -392,6 +394,14 @@ fn github_webhook(req: &mut Request) -> BorsResult<Response> {
     try!(Event::insert(tx, Provider::GitHub, &id, &event,
                        try!(str::from_utf8(&body))));
     Ok(util::html(""))
+}
+
+fn travis_webhook(req: &mut Request) -> BorsResult<Response> {
+    panic!()
+}
+
+fn appveyor_webhook(req: &mut Request) -> BorsResult<Response> {
+    panic!()
 }
 
 fn site_html(req: &Request, body: &str) -> Response {
